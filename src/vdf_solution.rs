@@ -324,7 +324,7 @@ impl HCGraphUtil {
         graph_size: u16, 
         percentage_x10: u16, 
         timeout_ms: u64,
-        third_opt_limit: usize,
+        _third_opt_limit: usize,
         worker_path: &Vec<u16>,
         data: &str,
         job: &Job,
@@ -339,6 +339,17 @@ impl HCGraphUtil {
         let seed = self.extract_seed_from_hash_hex(graph_hash_hex);
         
         let edges = self.generate_graph_v3_from_seed(seed, graph_size, percentage_x10);
+        
+        // 预计算nodeEdges数组：存储每个节点的邻居节点列表，避免重复查询edges矩阵
+        // 同时这个可以直接让两重循环的100*100变成100*12.5 加速8倍
+        let mut node_edges: Vec<Vec<u16>> = vec![Vec::new(); graph_size as usize];
+        for i in 0..graph_size as usize {
+            for j in 0..graph_size as usize {
+                if edges[i][j] {
+                    node_edges[i].push(j as u16);
+                }
+            }
+        }
 
         let start_node: u16 = 0;
         let start_time = Instant::now();
@@ -347,7 +358,7 @@ impl HCGraphUtil {
             current: u16,
             visited: &mut [bool],
             path: &mut Vec<u16>,
-            edges: &Vec<Vec<bool>>,
+            node_edges: &Vec<Vec<u16>>,
             start_time: Instant,
             timeout_ms: u64,
             graph_size: u16,
@@ -359,14 +370,18 @@ impl HCGraphUtil {
             path.push(current);
             visited[current as usize] = true;
 
-            if path.len() == graph_size as usize && edges[current as usize][0] {
-                return true;
-            }
-
-            for next in 0..graph_size as usize {
-                if edges[current as usize][next] && !visited[next] {
-                    if dfs(next as u16, visited, path, edges, start_time, timeout_ms, graph_size) {
-                        return true;
+            if path.len() == graph_size as usize {
+                // 检查是否回到起点
+                if node_edges[current as usize].contains(&0) {
+                    return true;
+                }
+            } else {
+                // 只遍历当前节点的邻居，避免无意义的判断
+                for &next in &node_edges[current as usize] {
+                    if !visited[next as usize] {
+                        if dfs(next, visited, path, node_edges, start_time, timeout_ms, graph_size) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -377,167 +392,160 @@ impl HCGraphUtil {
         }
 
         // 尝试找到queen路径
-        if !dfs(start_node, &mut visited, &mut path, &edges, start_time, timeout_ms, graph_size) {
+        if !dfs(start_node, &mut visited, &mut path, &node_edges, start_time, timeout_ms, graph_size) {
             return None; // 没有找到queen路径
         }
 
         let base_queen_path = path;
         
-        // 首先尝试原始路径
-        if let Some(result) = self.check_and_submit_solution(
-            &base_queen_path,
-            worker_path,
-            data,
-            job,
-            miner_id,
-            nonce,
-            server_sender,
-            hash_count,
-            api_hash_count
-        ) {
-            if result {
-                return Some(true); // 找到有效解，立即返回
+        // 创建基础路径列表，用于存储所有可能的起始路径
+        let mut base_queen_path_list: Vec<Vec<u16>> = Vec::new();
+        
+        // 添加原始路径到列表
+        base_queen_path_list.push(base_queen_path.clone());
+        
+        // 预处理：检查是否有节点可以与最后一个节点进行路径翻转
+        let last_node_index = base_queen_path.len() - 1;
+        for i in 1..(base_queen_path.len() - 1) {
+            // 检查是否可以与最后一个节点进行翻转（保持连通性）
+            if edges[base_queen_path[i - 1] as usize][base_queen_path[last_node_index] as usize] && 
+               edges[base_queen_path[i] as usize][base_queen_path[0] as usize] {
+                let mut flipped_path = base_queen_path.clone();
+                Self::reverse_subpath(&mut flipped_path, i, last_node_index);
+                base_queen_path_list.push(flipped_path);
             }
         }
         
-        // 使用2-opt优化生成额外的路径并立即检查
-        // 创建HashSet来存储已处理的交换对组合，避免重复计算
-        let mut processed_swaps_2: HashSet<(usize, usize, usize, usize)> = HashSet::new();
-        let mut processed_swaps_3: HashSet<(usize, usize, usize, usize, usize, usize)> = HashSet::new();
-        
-        // 为三重2-opt优化添加3秒超时机制
-        // let opt_start_time = Instant::now();
-        
-        for ii in 1..(graph_size as usize - 1) {
-            // 第一级循环超时检查
-            // if opt_start_time.elapsed() > Duration::from_secs(3) {
-            //     break;
-            // }
-            for jj in (ii + 1)..(graph_size as usize - 1) {
-                // 检查2-opt交换是否有效（保持连通性）
-                if edges[base_queen_path[ii - 1] as usize][base_queen_path[jj] as usize] && 
-                   edges[base_queen_path[ii] as usize][base_queen_path[jj + 1] as usize] {
-                    let mut new_path = base_queen_path.clone();
-                    Self::reverse_subpath(&mut new_path, ii, jj);
+
+        // 对每个基础路径进行处理
+        for current_base_path in &base_queen_path_list {
+            // 预计算nodeIndex数组：建立节点ID到路径位置的反向映射
+            let mut node_index: Vec<usize> = vec![0; graph_size as usize];
+            for (pos, &node) in current_base_path.iter().enumerate() {
+                node_index[node as usize] = pos;
+            }
+            
+            // 引入HashSet来避免重复路径的计算和提交
+            let mut processed_paths: std::collections::HashSet<Vec<u16>> = std::collections::HashSet::new();
+            
+            // 首先尝试当前基础路径
+            processed_paths.insert(current_base_path.clone());
+            if let Some(result) = self.check_and_submit_solution(current_base_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count) {
+                if result { return Some(true); } // 找到有效解，立即返回
+            }
+            
+            // 使用预计算数据进行优化的2-opt操作
+            for i in 1..(current_base_path.len() - 1) {
+                // 应该是比如我们想作ij之间子路径的翻转，那么我们需要判断的是i-1和j链接，i和j+1位置的节点连接
+                // 因此，我们第二重循环，不应该是j遍历全部！应该是一个循环变量k，遍历i-1的邻居节点，同时如果这个节点在路径中的位置j，大于i，那么就意味着至少i-1和这个j是链接的，只需要再判断一下i是不是和j+1链接就可以作翻转。
+                let node_before_i = current_base_path[i - 1];
+                let node_i = current_base_path[i];
+                
+                // 遍历i-1位置节点的邻居节点k
+                for &k in &node_edges[node_before_i as usize] {
+                    // 使用nodeIndex快速获取邻居节点k在路径中的位置j
+                    let j = node_index[k as usize];
                     
-                    // 立即检查这个路径
-                    if let Some(result) = self.check_and_submit_solution(
-                        &new_path,
-                        worker_path,
-                        data,
-                        job,
-                        miner_id,
-                        nonce,
-                        server_sender,
-                        hash_count,
-                        api_hash_count
-                    ) {
-                        if result {
-                            return Some(true); // 找到有效解，立即返回
-                        }
-                    }
-                    
-                    // 第二级优化：在已优化的路径上再次应用2-opt
-                    for iii in 1..(graph_size as usize - 1) {
-                        // 第二级循环超时检查
-                        // if opt_start_time.elapsed() > Duration::from_secs(3) {
-                        //     break;
-                        // }
-                        for jjj in (iii + 1)..(graph_size as usize - 1) {
-                            // 避免重复相同的交换位置
-                            if (iii == ii && jjj == jj) || (iii == jj && jjj == ii) {
-                                continue;
+                    // 检查位置有效性：j > i 且 j < current_base_path.len() - 1
+                    if j > i && j < current_base_path.len() - 1 {
+                        let node_j = current_base_path[j];
+                        let node_after_j = current_base_path[j + 1];
+                        
+                        // 只需要检查i和j+1位置的节点是否连接（i-1和j的连接已经通过邻居遍历保证）
+                        if edges[node_i as usize][node_after_j as usize] {
+                             let mut new_path = current_base_path.clone();
+                             // 执行路径翻转
+                             new_path[i..=j].reverse();
+                        
+                        // 检查路径是否已处理过
+                        if !processed_paths.contains(&new_path) {
+                            processed_paths.insert(new_path.clone());
+                            
+                            // 立即检查这个路径
+                            if let Some(result) = self.check_and_submit_solution(&new_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count) {
+                                if result { return Some(true); } // 找到有效解，立即返回
                             }
                             
-                            // 检查是否已经处理过这个交换组合（顺序无关）
-                            if processed_swaps_2.contains(&(iii, jjj, ii, jj)) {
-                                continue;
+                            // 对new_path再次进行2-opt操作（双重2-opt优化）
+                            // 重新计算new_path的node_index映射
+                            let mut new_node_index: Vec<usize> = vec![0; graph_size as usize];
+                            for (pos, &node) in new_path.iter().enumerate() {
+                                new_node_index[node as usize] = pos;
                             }
                             
-                            // 检查第二次2-opt交换是否有效（保持连通性）
-                            if edges[new_path[iii - 1] as usize][new_path[jjj] as usize] && 
-                               edges[new_path[iii] as usize][new_path[jjj + 1] as usize] {
-                                let mut second_opt_path = new_path.clone();
-                                Self::reverse_subpath(&mut second_opt_path, iii, jjj);
+                            for ii in 1..(new_path.len() - 1) {
+                                let node_before_ii = new_path[ii - 1];
+                                let node_ii = new_path[ii];
                                 
-                                // 立即检查这个路径
-                                if let Some(result) = self.check_and_submit_solution(
-                                    &second_opt_path,
-                                    worker_path,
-                                    data,
-                                    job,
-                                    miner_id,
-                                    nonce,
-                                    server_sender,
-                                    hash_count,
-                                    api_hash_count
-                                ) {
-                                    if result {
-                                        return Some(true); // 找到有效解，立即返回
-                                    }
-                                }
-                                
-                                let mut third_opt_count = 0; // 第三级优化计数器
-                                // 第三级优化：在第二级优化的路径上再次应用2-opt
-                                for iiii in 1..(graph_size as usize - 1) {
-                                    // 第三级循环超时检查
-                                    // if opt_start_time.elapsed() > Duration::from_secs(3) {
-                                    //     break;
-                                    // }
-                                    for jjjj in (iiii + 1)..(graph_size as usize - 1) {
-
-                                        // 避免重复相同的交换位置
-                                        if (iiii == ii && jjjj == jj) || (iiii == jj && jjjj == ii) ||
-                                           (iiii == iii && jjjj == jjj) || (iiii == jjj && jjjj == iii) ||
-                                           (second_opt_path[iiii] > second_opt_path[jjjj]){
-                                            continue;
-                                        }
+                                // 遍历ii-1位置节点的邻居节点kk
+                                for &kk in &node_edges[node_before_ii as usize] {
+                                    // 使用new_node_index快速获取邻居节点kk在路径中的位置jj
+                                    let jj = new_node_index[kk as usize];
+                                    
+                                    // 检查位置有效性：jj > ii 且 jj < new_path.len() - 1
+                                    if jj > ii && jj < new_path.len() - 1 {
+                                        let node_after_jj = new_path[jj + 1];
                                         
-                                        // 检查是否已经处理过这个交换组合（避免重复计算）
-                                        if processed_swaps_3.contains(&(ii, jj, iii, jjj, iiii, jjjj)) {
-                                            continue;
-                                        }
-                                        
-                                        // 检查第三次2-opt交换是否有效（保持连通性）
-                                        if edges[second_opt_path[iiii - 1] as usize][second_opt_path[jjjj] as usize] && 
-                                           edges[second_opt_path[iiii] as usize][second_opt_path[jjjj + 1] as usize] {
-                                            third_opt_count += 1; // 增加第三级优化计数器
-
-                                            let mut third_opt_path = second_opt_path.clone();
-                                            Self::reverse_subpath(&mut third_opt_path, iiii, jjjj);
+                                        // 检查ii和jj+1位置的节点是否连接
+                                        if edges[node_ii as usize][node_after_jj as usize] {
+                                            let mut double_opt_path = new_path.clone();
+                                            // 执行第二次路径翻转
+                                            double_opt_path[ii..=jj].reverse();
                                             
-                                            // 立即检查这个路径
-                                            if let Some(result) = self.check_and_submit_solution(
-                                                &third_opt_path,
-                                                worker_path,
-                                                data,
-                                                job,
-                                                miner_id,
-                                                nonce,
-                                                server_sender,
-                                                hash_count,
-                                                api_hash_count
-                                            ) {
-                                                if result {
-                                                    return Some(true); // 找到有效解，立即返回
+                                            // 检查双重优化路径是否已处理过
+                                            if !processed_paths.contains(&double_opt_path) {
+                                                processed_paths.insert(double_opt_path.clone());
+                                                
+                                                // 检查双重优化后的路径
+                                                if let Some(result) = self.check_and_submit_solution(&double_opt_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count) {
+                                                    if result { return Some(true); } // 找到有效解，立即返回
+                                                }
+                                                
+                                                // 对double_opt_path再次进行2-opt操作（第三重2-opt优化）
+                                                // 重新计算double_opt_path的node_index映射
+                                                let mut triple_node_index: Vec<usize> = vec![0; graph_size as usize];
+                                                for (pos, &node) in double_opt_path.iter().enumerate() {
+                                                    triple_node_index[node as usize] = pos;
+                                                }
+                                                
+                                                for iii in 1..(double_opt_path.len() - 1) {
+                                                    let node_before_iii = double_opt_path[iii - 1];
+                                                    let node_iii = double_opt_path[iii];
+                                                    
+                                                    // 遍历iii-1位置节点的邻居节点kkk
+                                                    for &kkk in &node_edges[node_before_iii as usize] {
+                                                        // 使用triple_node_index快速获取邻居节点kkk在路径中的位置jjj
+                                                        let jjj = triple_node_index[kkk as usize];
+                                                        
+                                                        // 检查位置有效性：jjj > iii 且 jjj < double_opt_path.len() - 1
+                                                        if jjj > iii && jjj < double_opt_path.len() - 1 {
+                                                            let node_after_jjj = double_opt_path[jjj + 1];
+                                                            
+                                                            // 检查iii和jjj+1位置的节点是否连接
+                                                            if edges[node_iii as usize][node_after_jjj as usize] {
+                                                                let mut triple_opt_path = double_opt_path.clone();
+                                                                // 执行第三次路径翻转
+                                                                triple_opt_path[iii..=jjj].reverse();
+                                                                
+                                                                // 检查三重优化路径是否已处理过
+                                                                if !processed_paths.contains(&triple_opt_path) {
+                                                                    processed_paths.insert(triple_opt_path.clone());
+                                                                    
+                                                                    // 检查三重优化后的路径
+                                                                    if let Some(result) = self.check_and_submit_solution(&triple_opt_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count) {
+                                                                        if result { return Some(true); } // 找到有效解，立即返回
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
-                                            
-                                            // 将这个交换组合标记为已处理
-                                            processed_swaps_3.insert((ii, jj, iii, jjj, iiii, jjjj));
                                         }
-                                        if third_opt_count >= third_opt_limit {
-                                            break;
-                                        }
-                                    }
-                                    if third_opt_count >= third_opt_limit {
-                                        break;
                                     }
                                 }
-                                
-                                // 将这个交换组合标记为已处理
-                                processed_swaps_2.insert((ii, jj, iii, jjj));
                             }
+                        }
                         }
                     }
                 }
