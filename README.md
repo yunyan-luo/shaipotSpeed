@@ -90,3 +90,10 @@ This will start the mining process, and you'll see output as **Shaipot** connect
 ```
 
 Happy Mining!
+
+# Update Log
+
+**2025-11-24**
+
+In the process of graph search, we first calculate the edges and then conduct the search, which can improve the speed of path search to a certain extent.
+In addition, vdftime1 and vdftime2 can be specified by yourself based on the performance of the device

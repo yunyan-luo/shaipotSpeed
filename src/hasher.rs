@@ -64,64 +64,61 @@ pub fn compute_hash_no_vdf(
     
     // 现在不需要判断V2了 因为已经确认我们在V2。
     // let worker_path = hc_util.find_hamiltonian_cycle_v3_hex(&hash1_hex, worker_grid_size, 500, vdftime1);
-    let worker_pathlist = hc_util.find_hamiltonian_cycle_v3_hex_multi(&hash1_hex, worker_grid_size, 500, vdftime1, 100);
+    let worker_path = hc_util.find_hamiltonian_cycle_v3_hex(&hash1_hex, worker_grid_size, 500, vdftime1);
     
 
-    if worker_pathlist.is_empty() {
+    if worker_path.is_empty() {
         return None;
     }
 
-    // 遍历worker_pathlist中的每个worker_path
-    for worker_path in &worker_pathlist {
-        // Bitcoin Core HashWriter serialization: << worker_solution << first_hash
-        let mut queen_hash_data = Vec::new();
-         
-        // Serialize vector size as compact integer (Bitcoin Core style)
-        let size = worker_path.len();
-        if size < 0xfd {
-            queen_hash_data.push(size as u8);
-        } else if size <= 0xffff {
-            queen_hash_data.push(0xfd);
-            queen_hash_data.extend(&(size as u16).to_le_bytes());
-        } else {
-            queen_hash_data.push(0xfe);
-            queen_hash_data.extend(&(size as u32).to_le_bytes());
-        }
-         
-        // Serialize each uint16_t in little-endian format
-        for &val in worker_path {
-            queen_hash_data.extend(&val.to_le_bytes());
-        }
-         
-        // Append first_hash bytes (32 bytes)
-        let mut hash1_bytes = hex::decode(&hash1_hex).expect("Invalid hex");
-        hash1_bytes.reverse();
-        queen_hash_data.extend(&hash1_bytes);
-         
-        let mut queen_hasher = Sha256::new();
-        queen_hasher.update(&queen_hash_data);
-        let queen_hash = queen_hasher.finalize();
-        let queen_hash_reversed = hex::encode(queen_hash.iter().rev().cloned().collect::<Vec<u8>>());
+    // Bitcoin Core HashWriter serialization: << worker_solution << first_hash
+    let mut queen_hash_data = Vec::new();
+     
+    // Serialize vector size as compact integer (Bitcoin Core style)
+    let size = worker_path.len();
+    if size < 0xfd {
+        queen_hash_data.push(size as u8);
+    } else if size <= 0xffff {
+        queen_hash_data.push(0xfd);
+        queen_hash_data.extend(&(size as u16).to_le_bytes());
+    } else {
+        queen_hash_data.push(0xfe);
+        queen_hash_data.extend(&(size as u32).to_le_bytes());
+    }
+     
+    // Serialize each uint16_t in little-endian format
+    for &val in &worker_path {
+        queen_hash_data.extend(&val.to_le_bytes());
+    }
+     
+    // Append first_hash bytes (32 bytes)
+    let mut hash1_bytes = hex::decode(&hash1_hex).expect("Invalid hex");
+    hash1_bytes.reverse();
+    queen_hash_data.extend(&hash1_bytes);
+     
+    let mut queen_hasher = Sha256::new();
+    queen_hasher.update(&queen_hash_data);
+    let queen_hash = queen_hasher.finalize();
+    let queen_hash_reversed = hex::encode(queen_hash.iter().rev().cloned().collect::<Vec<u8>>());
 
-        // 调用修改后的find_hamiltonian_cycle_v3_hex_second函数，它现在包含了所有后续处理逻辑
-        if let Some(result) = hc_util.find_hamiltonian_cycle_v3_hex_second(
-            &queen_hash_reversed, 
-            queen_bee_grid_size, 
-            125,
-            vdftime2,
-            third_opt_limit,
-            worker_path,
-            data,
-            job,
-            miner_id,
-            nonce,
-            server_sender,
-            hash_count,
-            api_hash_count
-        ) {
-            if result {
-                return Some(true); // 找到有效解，立即返回
-            }
+    // 调用修改后的find_hamiltonian_cycle_v3_hex_second函数，它现在包含了所有后续处理逻辑
+    if let Some(result) = hc_util.find_hamiltonian_cycle_v3_hex_second(
+        &queen_hash_reversed, 
+        queen_bee_grid_size, 
+        125,
+        vdftime2,
+        third_opt_limit,
+        &worker_path,
+        data,
+        job,
+        miner_id,
+        nonce,
+        server_sender,
+        hash_count,
+        api_hash_count
+    ) {
+        if result {
+            return Some(true); // 找到有效解，立即返回
         }
     }
     
