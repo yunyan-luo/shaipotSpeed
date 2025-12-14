@@ -14,15 +14,11 @@ pub struct Args {
     pub vdftime1: Option<String>,
     #[clap(long)]
     pub vdftime2: Option<String>,
-    #[clap(long)]
-    pub third: Option<String>,
 
     #[clap(skip)]
     pub vdftime1_parsed: u64,
     #[clap(skip)]
     pub vdftime2_parsed: u64,
-    #[clap(skip)]
-    pub third_parsed: usize,
 
 }
 
@@ -55,16 +51,6 @@ impl Args {
             10 // 未提供时使用默认值
         };
 
-        // 解析third，默认值为12
-        args.third_parsed = if let Some(third_str) = args.third.clone() {
-            match third_str.parse::<usize>() {
-                Ok(third) => third,
-                Err(_) => 12, // 解析失败时使用默认值
-            }
-        } else {
-            12 // 未提供时使用默认值
-        };
-
         args
     }
 
@@ -75,14 +61,11 @@ impl Args {
         println!("{}", "OPTIONAL: --threads <AMT>".bold().bright_red());
         println!("{}", "OPTIONAL: --vdftime1 <MILLISECONDS> (default: 1000)".bold().bright_red());
         println!("{}", "OPTIONAL: --vdftime2 <MILLISECONDS> (default: 10)".bold().bright_red());
-        println!("{}", "OPTIONAL: --third <NUMBER> (default: 12)".bold().bright_red());
         println!();
         println!("Example mining with 4 threads:");
         println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4");
         println!("Example with custom vdftime1 and vdftime2:");
         println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --vdftime1 2000 --vdftime2 20");
-        println!("Example with custom third optimization limit:");
-        println!("./shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --third 20");
     }
 }
 

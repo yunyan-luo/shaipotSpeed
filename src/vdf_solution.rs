@@ -1,5 +1,4 @@
-use primitive_types::U256;
-use rand_mt::Mt19937GenRand64;
+// use primitive_types::U256;
 use crate::graph_bridge::ffi;
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -9,20 +8,19 @@ use crate::models::{SubmitMessage, Job};
 use crate::utils::meets_target;
 use hex;
 use serde_json;
-use std::collections::HashSet;
 
 pub const GRAPH_SIZE: u16 = 2008;
 
 pub struct HCGraphUtil {
-    start_time: Instant,
-    vdf_bailout: u64
+    // start_time: Instant,
+    // vdf_bailout: u64
 }
 
 impl HCGraphUtil {
     // Helper function to reverse a subpath (2-opt optimization)
-    fn reverse_subpath(path: &mut Vec<u16>, i: usize, j: usize) {
-        path[i..=j].reverse();
-    }
+    // fn reverse_subpath(path: &mut Vec<u16>, i: usize, j: usize) {
+    //     path[i..=j].reverse();
+    // }
     pub fn check_and_submit_solution(
         &self,
         queen_path: &Vec<u16>,
@@ -94,14 +92,14 @@ impl HCGraphUtil {
         }
     }
 
-    pub fn new(vdf_bailout: Option<u64>) -> Self {
-        let bailout_timer: u64 = match vdf_bailout {
-            Some(timer) => { timer },
-            None => { 1000 } // default to 1 second
-        };
+    pub fn new(_vdf_bailout: Option<u64>) -> Self {
+        // let bailout_timer: u64 = match vdf_bailout {
+        //     Some(timer) => { timer },
+        //     None => { 1000 } // default to 1 second
+        // };
         HCGraphUtil {
-            start_time: Instant::now(),
-            vdf_bailout: bailout_timer
+            // start_time: Instant::now(),
+            // vdf_bailout: bailout_timer
         }
     }
 
@@ -231,9 +229,9 @@ impl HCGraphUtil {
 
     fn optimize_path(&self, path: &mut Vec<u16>, edges: &Vec<Vec<bool>>) {
         let n = path.len();
-        let mut needCheck = true;
-        while needCheck {
-            needCheck = false;
+        let mut need_check = true;
+        while need_check {
+            need_check = false;
             for i in 1..(n - 1) {
                 for j in (i + 1)..(n - 1) {
                     if edges[path[i - 1] as usize][path[j] as usize]
@@ -242,7 +240,7 @@ impl HCGraphUtil {
                     {
                         // 2-opt swap to correct inversion
                         path[i..=j].reverse();
-                        needCheck = true;
+                        need_check = true;
                     }
                 }
             }
@@ -255,7 +253,6 @@ impl HCGraphUtil {
         graph_size: u16, 
         percentage_x10: u16, 
         timeout_ms: u64,
-        _third_opt_limit: usize,
         worker_path: &Vec<u16>,
         data: &str,
         job: &Job,

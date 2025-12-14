@@ -1,12 +1,14 @@
 use hex;
 use primitive_types::U256;
 use sha2::{Digest, Sha256};
-use warp::test::WsError;
-use std::sync::atomic::{AtomicUsize, Ordering};
+// use warp::test::WsError;
+// use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::sync::mpsc;
 use super::vdf_solution::{HCGraphUtil, GRAPH_SIZE};
-use super::models::{SubmitMessage, Job};
+// use super::models::{SubmitMessage, Job};
+use super::models::Job;
 
 fn parse_header_time_from_data(header_data_hex: &str) -> u32 {
     let time_start = 8 + 64 + 64;
@@ -24,7 +26,6 @@ pub fn compute_hash_no_vdf(
     hc_util: &mut HCGraphUtil, 
     vdftime1: u64, 
     vdftime2: u64,
-    third_opt_limit: usize,
     hash_count: &Arc<AtomicUsize>,
     api_hash_count: &Arc<AtomicUsize>,
     job: &Job,
@@ -60,7 +61,7 @@ pub fn compute_hash_no_vdf(
     let worker_grid_size = hc_util.get_worker_grid_size(&hash1_hex);
     let queen_bee_grid_size = hc_util.get_queen_bee_grid_size(worker_grid_size);
 
-    let header_time = parse_header_time_from_data(data);
+    let _header_time = parse_header_time_from_data(data);
     
     // 现在不需要判断V2了 因为已经确认我们在V2。
     // let worker_path = hc_util.find_hamiltonian_cycle_v3_hex(&hash1_hex, worker_grid_size, 500, vdftime1);
@@ -107,7 +108,6 @@ pub fn compute_hash_no_vdf(
         queen_bee_grid_size, 
         125,
         vdftime2,
-        third_opt_limit,
         &worker_path,
         data,
         job,

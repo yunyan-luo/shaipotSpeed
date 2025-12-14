@@ -113,7 +113,6 @@ async fn main() {
                             &mut hc_util, 
                             args.vdftime1_parsed, 
                             args.vdftime2_parsed,
-                            args.third_parsed,
                             &hash_count,
                             &api_hash_count,
                             &job,
