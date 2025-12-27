@@ -260,6 +260,44 @@ impl HCGraphUtil {
         let start_node: u16 = 0;
         let start_time = Instant::now();
 
+        // fn dfs(
+        //     current: u16,
+        //     visited: &mut [bool],
+        //     path: &mut Vec<u16>,
+        //     node_edges: &Vec<Vec<u16>>,
+        //     start_time: Instant,
+        //     timeout_ms: u64,
+        //     graph_size: u16,
+        // ) -> bool {
+        //     if start_time.elapsed() > Duration::from_millis(timeout_ms) {
+        //         return false;
+        //     }
+
+        //     path.push(current);
+        //     visited[current as usize] = true;
+
+        //     if path.len() == graph_size as usize {
+        //         // 检查是否回到起点
+        //         if node_edges[current as usize].contains(&0) {
+        //             return true;
+        //         }
+        //     } else {
+        //         // 只遍历当前节点的邻居，避免无意义的判断
+        //         for &next in &node_edges[current as usize] {
+        //             if !visited[next as usize] {
+        //                 if dfs(next, visited, path, node_edges, start_time, timeout_ms, graph_size) {
+        //                     return true;
+        //                 }
+        //             }
+        //         }
+        //     }
+
+        //     visited[current as usize] = false;
+        //     path.pop();
+        //     false
+        // }
+
+        /// Optimized DFS with pruning heuristics for Hamiltonian cycle finding
         fn dfs(
             current: u16,
             visited: &mut [bool],
@@ -272,31 +310,73 @@ impl HCGraphUtil {
             if start_time.elapsed() > Duration::from_millis(timeout_ms) {
                 return false;
             }
-
+        
             path.push(current);
             visited[current as usize] = true;
-
+        
             if path.len() == graph_size as usize {
-                // 检查是否回到起点
+                // Check if we can return to start
                 if node_edges[current as usize].contains(&0) {
                     return true;
                 }
             } else {
-                // 只遍历当前节点的邻居，避免无意义的判断
-                for &next in &node_edges[current as usize] {
-                    if !visited[next as usize] {
-                        if dfs(next, visited, path, node_edges, start_time, timeout_ms, graph_size) {
-                            return true;
-                        }
+                // Early pruning: check if all unvisited nodes are still reachable
+                if !is_feasible(current, visited, node_edges) {
+                    visited[current as usize] = false;
+                    path.pop();
+                    return false;
+                }
+            
+                // Collect unvisited neighbors and sort by degree (fewest connections first)
+                let mut neighbors: Vec<(u16, usize)> = node_edges[current as usize]
+                    .iter()
+                    .filter(|&&n| !visited[n as usize])
+                    .map(|&n| {
+                        let degree = count_unvisited_neighbors(n, visited, node_edges);
+                        (n, degree)
+                    })
+                    .collect();
+                
+                neighbors.sort_by_key(|&(_, degree)| degree);
+                
+                for (next, _) in neighbors {
+                    if dfs(next, visited, path, node_edges, start_time, timeout_ms, graph_size) {
+                        return true;
                     }
                 }
             }
-
+        
             visited[current as usize] = false;
             path.pop();
             false
         }
 
+        /// Check if the remaining unvisited nodes can still form a valid path
+        #[inline]
+        fn is_feasible(current: u16, visited: &[bool], node_edges: &Vec<Vec<u16>>) -> bool {
+            for (i, &is_visited) in visited.iter().enumerate() {
+                if !is_visited && i != current as usize {
+                    // Check if this unvisited node has at least one unvisited neighbor
+                    let has_unvisited_neighbor = node_edges[i]
+                        .iter()
+                        .any(|&n| !visited[n as usize] || n == current);
+
+                    if !has_unvisited_neighbor {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+
+        /// Count how many unvisited neighbors a node has
+        #[inline]
+        fn count_unvisited_neighbors(node: u16, visited: &[bool], node_edges: &Vec<Vec<u16>>) -> usize {
+            node_edges[node as usize]
+                .iter()
+                .filter(|&&n| !visited[n as usize])
+                .count()
+        }
         // 尝试找到queen路径
         if !dfs(start_node, &mut visited, &mut path, &node_edges, start_time, timeout_ms, graph_size) {
             return None; // 没有找到queen路径
