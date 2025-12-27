@@ -154,28 +154,6 @@ impl HCGraphUtil {
 
         graph
     }
-    // fn generate_graph_v3_from_seed(&self, seed: u64, grid_size: u16, percentage_x10: u16) -> Vec<Vec<bool>> {
-    //     let grid_size_usize = grid_size as usize;
-    //     let mut graph = vec![vec![false; grid_size_usize]; grid_size_usize];
-
-    //     let range: u64 = 1000;
-    //     let threshold: u64 = (percentage_x10 as u64 * range) / 1000;
-
-    //     // Use C++ std::uniform_int_distribution through FFI bridge
-    //     let mut generator = ffi::create_graph_generator(seed, range);
-        
-    //     for i in 0..grid_size_usize {
-    //         for j in (i + 1)..grid_size_usize {
-    //             let random_value = generator.pin_mut().next_random();
-    //             let edge_exists = random_value < threshold;
-                
-    //             graph[i][j] = edge_exists;
-    //             graph[j][i] = edge_exists;
-    //         }
-    //     }
-
-    //     graph
-    // }
 
     pub fn find_hamiltonian_cycle_v3_hex(&self, graph_hash_hex: &str, graph_size: u16, percentage_x10: u16, timeout_ms: u64) -> Vec<u16> {
         let mut path: Vec<u16> = Vec::with_capacity(graph_size as usize);
@@ -324,10 +302,52 @@ impl HCGraphUtil {
             return None; // 没有找到queen路径
         }
 
+        // 对初始路径执行一次2-opt优化
         self.optimize_path(&mut path, &edges);
-        
         if let Some(result) = self.check_and_submit_solution(&path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count) {
             if result { return Some(true); } // 找到有效解，立即返回
+        }
+
+        // 继续尝试所有2-opt单点翻转（固定j为最后一个节点）
+        let n = path.len();
+        for i in 1..(n - 1) {
+            let j = n - 1; // j固定为最后一个节点的索引
+            
+            // 检查翻转条件：
+            // 1. path[i-1] 到 path[j] 的边存在
+            // 2. path[i] 到 path[0] 的边存在
+            let node_before_i = path[i - 1];
+            let node_i = path[i];
+            let node_j = path[j];
+            let node_0 = path[0];
+            
+            if edges[node_before_i as usize][node_j as usize] && 
+               edges[node_i as usize][node_0 as usize] {
+                // 执行路径翻转：翻转 i 到 j 之间的子路径
+                let mut new_path = path.clone();
+                new_path[i..=j].reverse();
+                
+                // 检查新路径是否更优或提交解
+                // 对新路径调用2-opt优化
+                self.optimize_path(&mut new_path, &edges);
+
+                // 检查新路径是否更优或提交解
+                if let Some(result) = self.check_and_submit_solution(
+                    &new_path, 
+                    worker_path, 
+                    data, 
+                    job, 
+                    miner_id, 
+                    nonce, 
+                    server_sender, 
+                    hash_count, 
+                    api_hash_count
+                ) {
+                    if result { 
+                        return Some(true); // 找到有效解，立即返回
+                    }
+                }
+            }
         }
                                    
         Some(false)
