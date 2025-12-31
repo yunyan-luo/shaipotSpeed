@@ -388,43 +388,151 @@ impl HCGraphUtil {
             if result { return Some(true); } // 找到有效解，立即返回
         }
 
-        // 继续尝试所有2-opt单点翻转（固定j为最后一个节点）
         let n = path.len();
-        for i in 1..(n - 1) {
-            let j = n - 1; // j固定为最后一个节点的索引
-            
-            // 检查翻转条件：
-            // 1. path[i-1] 到 path[j] 的边存在
-            // 2. path[i] 到 path[0] 的边存在
-            let node_before_i = path[i - 1];
-            let node_i = path[i];
-            let node_j = path[j];
-            let node_0 = path[0];
-            
-            if edges[node_before_i as usize][node_j as usize] && 
-               edges[node_i as usize][node_0 as usize] {
-                // 执行路径翻转：翻转 i 到 j 之间的子路径
-                let mut new_path = path.clone();
-                new_path[i..=j].reverse();
-                
-                // 检查新路径是否更优或提交解
-                // 对新路径调用2-opt优化
-                self.optimize_path(&mut new_path, &edges);
 
-                // 检查新路径是否更优或提交解
-                if let Some(result) = self.check_and_submit_solution(
-                    &new_path, 
-                    worker_path, 
-                    data, 
-                    job, 
-                    miner_id, 
-                    nonce, 
-                    server_sender, 
-                    hash_count, 
-                    api_hash_count
-                ) {
-                    if result { 
-                        return Some(true); // 找到有效解，立即返回
+        // 1. 全局2-opt搜索 (Global 2-opt Search)
+        // 尝试所有可能的2-opt交换，不仅仅是涉及最后一个节点的交换
+        'outer_2opt: for i in 0..n-2 {
+            // j 从 i+2 开始，避免相邻边交换（无效）
+            // j 可以取到 n-1
+            for j in (i + 2)..n {
+                // 检查时间限制
+                if start_time.elapsed() > Duration::from_millis(timeout_ms) {
+                    break 'outer_2opt;
+                }
+
+                // 2-opt 移动涉及断开 (i, i+1) 和 (j, j+1)
+                // 连接 (i, j) 和 (i+1, j+1)
+                // 注意：当 j=n-1 时，j+1 为 0
+                
+                let idx_i = i;
+                let idx_i_next = i + 1;
+                let idx_j = j;
+                let idx_j_next = (j + 1) % n;
+
+                let node_i = path[idx_i];
+                let node_i_next = path[idx_i_next];
+                let node_j = path[idx_j];
+                let node_j_next = path[idx_j_next];
+
+                // 检查新边是否存在
+                if edges[node_i as usize][node_j as usize] && 
+                   edges[node_i_next as usize][node_j_next as usize] {
+                    
+                    // 构建新路径：反转 path[i+1...j]
+                    let mut new_path = path.clone();
+                    
+                    // Rust的slice reverse不处理wrap-around，但在2-opt标准定义中，
+                    // 我们只需反转中间段。由于我们的循环结构 i < j，这一段是连续的。
+                    new_path[idx_i_next..=idx_j].reverse();
+
+                    // 必须调用 optimize_path 满足验证约束
+                    self.optimize_path(&mut new_path, &edges);
+
+                    // 检查并提交
+                    if let Some(result) = self.check_and_submit_solution(
+                        &new_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count
+                    ) {
+                        if result { return Some(true); }
+                    }
+                }
+            }
+        }
+
+        // 2. 3-opt 搜索 (3-opt Search - Block Move)
+        // 尝试将一段路径移动到另一个位置
+        // 为了性能，我们限制移动的块大小为 1 到 5
+        'outer_3opt: for block_len in 1..=5 {
+            // 块的起始位置 i
+            for i in 0..n {
+                // 块的结束位置 j (处理循环)
+                let j = (i + block_len - 1) % n;
+                
+                // 插入位置 k
+                for k in 0..n {
+                    if start_time.elapsed() > Duration::from_millis(timeout_ms) {
+                        break 'outer_3opt;
+                    }
+
+                    // k 不能在块内，也不能是块的前一个节点（移动无效）
+                    // 检查 k 是否在 i..=j 范围内（考虑循环）
+                    let in_block = if i <= j {
+                        k >= i && k <= j
+                    } else {
+                        k >= i || k <= j
+                    };
+                    
+                    let prev_i = (i + n - 1) % n;
+                    if in_block || k == prev_i {
+                        continue;
+                    }
+
+                    // 3-opt 移动逻辑 (Block Move / Vertex Shift)
+                    // 原路径: ... -> prev_i -> [i ... j] -> next_j -> ... -> k -> next_k -> ...
+                    // 新路径: ... -> prev_i -> next_j -> ... -> k -> [i ... j] -> next_k -> ...
+                    
+                    // 断开边: (prev_i, i), (j, next_j), (k, next_k)
+                    // 新增边: (prev_i, next_j), (k, i), (j, next_k)
+                    
+                    let idx_prev_i = prev_i;
+                    let idx_i = i;
+                    let idx_j = j;
+                    let idx_next_j = (j + 1) % n;
+                    let idx_k = k;
+                    let idx_next_k = (k + 1) % n;
+
+                    let node_prev_i = path[idx_prev_i];
+                    let node_i = path[idx_i];
+                    let node_j = path[idx_j];
+                    let node_next_j = path[idx_next_j];
+                    let node_k = path[idx_k];
+                    let node_next_k = path[idx_next_k];
+
+                    if edges[node_prev_i as usize][node_next_j as usize] &&
+                       edges[node_k as usize][node_i as usize] &&
+                       edges[node_j as usize][node_next_k as usize] {
+                        
+                        // 构建新路径
+                        // 新的环顺序是: prev_i -> next_j ... k -> i ... j -> next_k ... prev_i
+                        let mut temp_path = Vec::with_capacity(n);
+                        temp_path.push(node_prev_i); // Start at prev_i
+                        
+                        // Append next_j ... k
+                        let mut curr = idx_next_j;
+                        loop {
+                            temp_path.push(path[curr]);
+                            if curr == idx_k { break; }
+                            curr = (curr + 1) % n;
+                        }
+                        
+                        // Append i ... j
+                        let mut curr = idx_i;
+                        loop {
+                            temp_path.push(path[curr]);
+                            if curr == idx_j { break; }
+                            curr = (curr + 1) % n;
+                        }
+                        
+                        // Append next_k ... prev_i (excluding prev_i as it's start)
+                        let mut curr = idx_next_k;
+                        while curr != idx_prev_i {
+                             temp_path.push(path[curr]);
+                             curr = (curr + 1) % n;
+                        }
+                        
+                        // 确保 0 在路径起始位置 (canonical form)
+                        if let Some(pos_zero) = temp_path.iter().position(|&x| x == 0) {
+                            temp_path.rotate_left(pos_zero);
+                        }
+
+                        // 验证约束: 必须调用 optimize_path
+                        self.optimize_path(&mut temp_path, &edges);
+                        
+                        if let Some(result) = self.check_and_submit_solution(
+                            &temp_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count
+                        ) {
+                            if result { return Some(true); }
+                        }
                     }
                 }
             }
