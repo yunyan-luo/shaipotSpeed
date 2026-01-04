@@ -132,9 +132,10 @@ impl HCGraphUtil {
     }
 
 
-    fn generate_graph_v3_from_seed(&self, seed: u64, grid_size: u16, percentage_x10: u16) -> Vec<Vec<bool>> {
+    fn generate_graph_v3_from_seed(&self, seed: u64, grid_size: u16, percentage_x10: u16) -> (Vec<Vec<bool>>, Vec<Vec<u16>>) {
         let grid_size_usize = grid_size as usize;
         let mut graph = vec![vec![false; grid_size_usize]; grid_size_usize];
+        let mut adj = vec![Vec::with_capacity(grid_size_usize / 2); grid_size_usize];
 
         let range: u64 = 1000;
         let threshold: u64 = (percentage_x10 as u64 * range) / 1000;
@@ -147,12 +148,16 @@ impl HCGraphUtil {
                 let random_value = generator.pin_mut().next_random();
                 let edge_exists = random_value < threshold;
                 
-                graph[i][j] = edge_exists;
-                graph[j][i] = edge_exists;
+                if edge_exists {
+                    graph[i][j] = true;
+                    graph[j][i] = true;
+                    adj[i].push(j as u16);
+                    adj[j].push(i as u16);
+                }
             }
         }
 
-        graph
+        (graph, adj)
     }
 
     pub fn find_hamiltonian_cycle_v3_hex(&self, graph_hash_hex: &str, graph_size: u16, percentage_x10: u16, timeout_ms: u64) -> Vec<u16> {
@@ -160,7 +165,7 @@ impl HCGraphUtil {
         let mut visited = vec![false; graph_size as usize];
         let seed = self.extract_seed_from_hash_hex(graph_hash_hex);
         
-        let edges = self.generate_graph_v3_from_seed(seed, graph_size, percentage_x10);
+        let (edges, adj) = self.generate_graph_v3_from_seed(seed, graph_size, percentage_x10);
 
         let start_node: u16 = 0;
         let start_time = Instant::now();
@@ -170,6 +175,7 @@ impl HCGraphUtil {
             visited: &mut [bool],
             path: &mut Vec<u16>,
             edges: &Vec<Vec<bool>>,
+            adj: &Vec<Vec<u16>>,
             start_time: Instant,
             timeout_ms: u64,
             graph_size: u16,
@@ -185,9 +191,9 @@ impl HCGraphUtil {
                 return true;
             }
 
-            for next in 0..graph_size as usize {
-                if edges[current as usize][next] && !visited[next] {
-                    if dfs(next as u16, visited, path, edges, start_time, timeout_ms, graph_size) {
+            for &next in &adj[current as usize] {
+                if !visited[next as usize] {
+                    if dfs(next, visited, path, edges, adj, start_time, timeout_ms, graph_size) {
                         return true;
                     }
                 }
@@ -198,7 +204,7 @@ impl HCGraphUtil {
             false
         }
 
-        if dfs(start_node, &mut visited, &mut path, &edges, start_time, timeout_ms, graph_size) {
+        if dfs(start_node, &mut visited, &mut path, &edges, &adj, start_time, timeout_ms, graph_size) {
             return path;
         }
 
@@ -244,18 +250,7 @@ impl HCGraphUtil {
         let mut visited = vec![false; graph_size as usize];
         let seed = self.extract_seed_from_hash_hex(graph_hash_hex);
         
-        let edges = self.generate_graph_v3_from_seed(seed, graph_size, percentage_x10);
-        
-        // 预计算nodeEdges数组：存储每个节点的邻居节点列表，避免重复查询edges矩阵
-        // 同时这个可以直接让两重循环的100*100变成100*12.5 加速8倍
-        let mut node_edges: Vec<Vec<u16>> = vec![Vec::new(); graph_size as usize];
-        for i in 0..graph_size as usize {
-            for j in 0..graph_size as usize {
-                if edges[i][j] {
-                    node_edges[i].push(j as u16);
-                }
-            }
-        }
+        let (edges, node_edges) = self.generate_graph_v3_from_seed(seed, graph_size, percentage_x10);
 
         let start_node: u16 = 0;
         let start_time = Instant::now();

@@ -67,7 +67,6 @@ pub fn compute_hash_no_vdf(
     // let worker_path = hc_util.find_hamiltonian_cycle_v3_hex(&hash1_hex, worker_grid_size, 500, vdftime1);
     let worker_path = hc_util.find_hamiltonian_cycle_v3_hex(&hash1_hex, worker_grid_size, 500, vdftime1);
     
-
     if worker_path.is_empty() {
         return None;
     }
