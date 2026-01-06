@@ -385,54 +385,7 @@ impl HCGraphUtil {
 
         let n = path.len();
 
-        // 1. 全局2-opt搜索 (Global 2-opt Search)
-        // 尝试所有可能的2-opt交换，不仅仅是涉及最后一个节点的交换
-        'outer_2opt: for i in 0..n-2 {
-            // j 从 i+2 开始，避免相邻边交换（无效）
-            // j 可以取到 n-1
-            for j in (i + 2)..n {
-                // 检查时间限制
-                if start_time.elapsed() > Duration::from_millis(timeout_ms) {
-                    break 'outer_2opt;
-                }
-
-                // 2-opt 移动涉及断开 (i, i+1) 和 (j, j+1)
-                // 连接 (i, j) 和 (i+1, j+1)
-                // 注意：当 j=n-1 时，j+1 为 0
-                
-                let idx_i = i;
-                let idx_i_next = i + 1;
-                let idx_j = j;
-                let idx_j_next = (j + 1) % n;
-
-                let node_i = path[idx_i];
-                let node_i_next = path[idx_i_next];
-                let node_j = path[idx_j];
-                let node_j_next = path[idx_j_next];
-
-                // 检查新边是否存在
-                if edges[node_i as usize][node_j as usize] && 
-                   edges[node_i_next as usize][node_j_next as usize] {
-                    
-                    // 构建新路径：反转 path[i+1...j]
-                    let mut new_path = path.clone();
-                    
-                    // Rust的slice reverse不处理wrap-around，但在2-opt标准定义中，
-                    // 我们只需反转中间段。由于我们的循环结构 i < j，这一段是连续的。
-                    new_path[idx_i_next..=idx_j].reverse();
-
-                    // 必须调用 optimize_path 满足验证约束
-                    self.optimize_path(&mut new_path, &edges);
-
-                    // 检查并提交
-                    if let Some(result) = self.check_and_submit_solution(
-                        &new_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count
-                    ) {
-                        if result { return Some(true); }
-                    }
-                }
-            }
-        }
+ 
 
         // 2. 3-opt 搜索 (3-opt Search - Block Move)
         // 尝试将一段路径移动到另一个位置
@@ -528,6 +481,56 @@ impl HCGraphUtil {
                         ) {
                             if result { return Some(true); }
                         }
+
+                        // 针对提交的路径 实现末尾2-opt
+                        // 1. 全局2-opt搜索 (Global 2-opt Search)
+                        // 尝试所有可能的2-opt交换，不仅仅是涉及最后一个节点的交换
+                        'outer_2opt: for i_2opt in 0..n-1 {
+                            // j 从 i+2 开始，避免相邻边交换（无效）
+                            for j_2opt in i_2opt + 2..n {
+                                // 检查时间限制
+                                if start_time.elapsed() > Duration::from_millis(timeout_ms) {
+                                    break 'outer_2opt;
+                                }
+
+                                // 2-opt 移动涉及断开 (i, i+1) 和 (j, j+1)
+                                // 连接 (i, j) 和 (i+1, j+1)
+                                // 注意：当 j=n-1 时，j+1 为 0
+                                
+                                let idx_i = i_2opt;
+                                let idx_i_next = i_2opt + 1;
+                                let idx_j = j_2opt;
+                                let idx_j_next = (j_2opt + 1) % n;
+
+                                let node_i = temp_path[idx_i];
+                                let node_i_next = temp_path[idx_i_next];
+                                let node_j = temp_path[idx_j];
+                                let node_j_next = temp_path[idx_j_next];
+
+                                // 检查新边是否存在
+                                if edges[node_i as usize][node_j as usize] && 
+                                   edges[node_i_next as usize][node_j_next as usize] {
+                                    
+                                    // 构建新路径：反转 temp_path[i+1...j]
+                                    let mut new_path = temp_path.clone();
+                                    
+                                    // Rust的slice reverse不处理wrap-around，但在2-opt标准定义中，
+                                    // 我们只需反转中间段。由于我们的循环结构 i < j，这一段是连续的。
+                                    new_path[idx_i_next..=idx_j].reverse();
+
+                                    // 必须调用 optimize_path 满足验证约束
+                                    self.optimize_path(&mut new_path, &edges);
+
+                                    // 检查并提交
+                                    if let Some(result) = self.check_and_submit_solution(
+                                        &new_path, worker_path, data, job, miner_id, nonce, server_sender, hash_count, api_hash_count
+                                    ) {
+                                        if result { return Some(true); }
+                                    }
+                                }
+                            }
+                        }
+                        
                     }
                 }
             }
