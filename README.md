@@ -6,6 +6,25 @@ OPENSSL_DIR=/usr OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu OPENSSL_INCLUDE_DIR=/
 
 Welcome to **Shaipot**, a Shaicoin miner written in Rust. Shaipot is designed for efficiency and speed, supporting multi-threaded mining with minimal setup.
 
+## Update Logs
+
+Better support for multi-threading. However, bugs may still occur when job switching, hope someone can help to fix. the proper speed of the shaipot now is 3-4kh per thread.
+Enjoy mining. 
+if you experience something like the following, that's a bug and don't worry. Will be normal when new jobs come.
+
+```
+SUBMITTING SHARE TO BACKEND!
+Share rejected.
+Hash rate: 18165.20 hashes/second
+SUBMITTING SHARE TO BACKEND!
+Share rejected.
+SUBMITTING SHARE TO BACKEND!
+Share rejected.
+Hash rate: 13627.60 hashes/second
+Hash rate: 5195.80 hashes/second
+```
+
+
 ## Getting Started
 
 To start mining with **Shaipot**, you need to provide the necessary arguments to connect to a mining pool and specify your Shaicoin address. Let's walk through how to set up and start mining.
@@ -53,17 +72,17 @@ Make sure to replace `<shaicoin_address>` and `<POOL_URL>` with your actual Shai
 Once compiled, **Shaipot** is ready to run! Simply use the command provided above, specifying your Shaicoin address, the pool URL, and (optionally) the number of threads. Here's an example:
 
 ```bash
-./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4
+./target/release/shaipot --address sh1qs4jvyp5r7ck0xf2ywyhcm3sn3ldzgvupmp0m8a --pool wss://pool.shaicoin.org --threads 4
 ```
 
 Example usage with custom vdftime parameters:
 ```bash
-./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --threads 4 --vdftime1 1500 --vdftime2 15
+./target/release/shaipot --address sh1qs4jvyp5r7ck0xf2ywyhcm3sn3ldzgvupmp0m8a --pool wss://pool.shaicoin.org --threads 4 --vdftime1 1500 --vdftime2 15
 ```
 
 You can also specify just one of the vdftime parameters:
 ```bash
-./target/release/shaipot --address sh1qeexkz69dz6j4q0zt0pkn36650yevwc8eksqeuu --pool wss://pool.shaicoin.org --vdftime2 15
+./target/release/shaipot --address sh1qs4jvyp5r7ck0xf2ywyhcm3sn3ldzgvupmp0m8a --pool wss://pool.shaicoin.org --vdftime2 15
 ```
 
 This will start the mining process, and you'll see output as **Shaipot** connects to the pool and begins mining.

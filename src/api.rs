@@ -1,9 +1,9 @@
-use warp::Filter;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::sync::Mutex;
 use serde::Serialize;
-use std::time::{Instant, Duration};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
+use warp::Filter;
 
 #[derive(Serialize)]
 pub struct Stats {
@@ -36,7 +36,10 @@ fn calculate_uptime(start_time: Instant) -> u64 {
     elapsed.as_secs()
 }
 
-async fn stats_handler(state: Arc<MinerState>, start_time: Instant) -> Result<impl warp::Reply, warp::Rejection> {
+async fn stats_handler(
+    state: Arc<MinerState>,
+    start_time: Instant,
+) -> Result<impl warp::Reply, warp::Rejection> {
     let avg_hashrate = calculate_avg_hashrate(state.hashrate_samples.clone()).await;
     let accepted = state.accepted_shares.load(Ordering::Relaxed);
     let rejected = state.rejected_shares.load(Ordering::Relaxed);
@@ -57,12 +60,10 @@ async fn stats_handler(state: Arc<MinerState>, start_time: Instant) -> Result<im
 pub async fn start_http_server(state: Arc<MinerState>) {
     let start_time = Instant::now();
 
-    let stats_route = warp::path("stats")
-        .and(warp::get())
-        .and_then({
-            let state = state.clone();
-            move || stats_handler(state.clone(), start_time)
-        });
+    let stats_route = warp::path("stats").and(warp::get()).and_then({
+        let state = state.clone();
+        move || stats_handler(state.clone(), start_time)
+    });
 
     warp::serve(stats_route).run(([127, 0, 0, 1], 8844)).await;
 }
