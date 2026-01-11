@@ -1323,48 +1323,7 @@ bool HamiltonianSearcherCPU::check_solution(
     std::string& out_solution_hex,
     SolutionCallback callback
 ) {
-    // // ========== Cycle validity verification ==========
-    // {
-    //     // 1) Check path length
-    //     if (queen_path_len != graph_size) {
-    //         fprintf(stderr, "[check_solution] ERROR: path length %u != graph_size %u\n",
-    //                 queen_path_len, graph_size);
-    //         return false;
-    //     }
-        
-    //     // 2) Check node uniqueness
-    //     bool visited[MAX_QUEEN_GRAPH_SIZE] = {false};
-    //     for (uint16_t i = 0; i < queen_path_len; i++) {
-    //         uint16_t node = queen_path[i];
-    //         if (node >= graph_size) {
-    //             fprintf(stderr, "[check_solution] ERROR: node %u out of range\n", node);
-    //             return false;
-    //         }
-    //         if (visited[node]) {
-    //             fprintf(stderr, "[check_solution] ERROR: node %u duplicated\n", node);
-    //             return false;
-    //         }
-    //         visited[node] = true;
-    //     }
-        
-    //     // 3) Check path continuity (edge exists between adjacent nodes)
-    //     for (uint16_t i = 0; i < queen_path_len - 1; i++) {
-    //         if (!edges[queen_path[i]][queen_path[i + 1]]) {
-    //             fprintf(stderr, "[check_solution] ERROR: no edge %u -> %u\n",
-    //                     queen_path[i], queen_path[i + 1]);
-    //             return false;
-    //         }
-    //     }
-        
-    //     // 4) Check cycle closure
-    //     if (!edges[queen_path[queen_path_len - 1]][queen_path[0]]) {
-    //         fprintf(stderr, "[check_solution] ERROR: no closing edge %u -> %u\n",
-    //                 queen_path[queen_path_len - 1], queen_path[0]);
-    //         return false;
-    //     }
-    // }
-    // // ========== Verification passed ==========
-    
+      
     // Combine worker_path + queen_path
     uint16_t combined_path[HC_GRAPH_SIZE];
     uint16_t combined_len = 0;
@@ -1682,77 +1641,7 @@ SearchResult HamiltonianSearcherCPU::search_second(
         return result;
     }
     
-    // // ========== Cycle correctness validation ==========
-    // {
-    //     bool valid = true;
-    //     std::string error_msg;
-        
-    //     // 1) Check whether path length equals graph_size
-    //     if (path_len != graph_size) {
-    //         valid = false;
-    //         fprintf(stderr, "[C++ HC2] VALIDATION ERROR: path length %u != graph_size %u\n", 
-    //                 path_len, graph_size);
-    //     }
-        
-    //     // 2) Check each node appears exactly once (no duplicates, no missing)
-    //     if (valid) {
-    //         bool node_visited[MAX_QUEEN_GRAPH_SIZE] = {false};
-    //         for (uint16_t i = 0; i < path_len; i++) {
-    //             uint16_t node = path[i];
-    //             if (node >= graph_size) {
-    //                 valid = false;
-    //                 fprintf(stderr, "[C++ HC2] VALIDATION ERROR: node %u at pos %u out of range [0,%u)\n",
-    //                         node, i, graph_size);
-    //                 break;
-    //             }
-    //             if (node_visited[node]) {
-    //                 valid = false;
-    //                 fprintf(stderr, "[C++ HC2] VALIDATION ERROR: node %u appears more than once (duplicate at pos %u)\n",
-    //                         node, i);
-    //                 break;
-    //             }
-    //             node_visited[node] = true;
-    //         }
-            
-    //         // Check whether all nodes were visited
-    //         if (valid) {
-    //             for (uint16_t i = 0; i < graph_size; i++) {
-    //                 if (!node_visited[i]) {
-    //                     valid = false;
-    //                     fprintf(stderr, "[C++ HC2] VALIDATION ERROR: node %u was not visited\n", i);
-    //                     break;
-    //                 }
-    //             }
-    //         }
-    //     }
-        
-    //     // 3) Check path continuity (edge must exist between adjacent nodes)
-    //     if (valid) {
-    //         for (uint16_t i = 0; i < path_len - 1; i++) {
-    //             if (!edges[path[i]][path[i + 1]]) {
-    //                 valid = false;
-    //                 fprintf(stderr, "[C++ HC2] VALIDATION ERROR: no edge between path[%u]=%u and path[%u]=%u\n",
-    //                         i, path[i], i + 1, path[i + 1]);
-    //                 break;
-    //             }
-    //         }
-    //     }
-        
-    //     // 4) Check cycle closure (last node must connect to first node)
-    //     if (valid) {
-    //         if (!edges[path[path_len - 1]][path[0]]) {
-    //             valid = false;
-    //             fprintf(stderr, "[C++ HC2] VALIDATION ERROR: no closing edge between last node %u and first node %u\n",
-    //                     path[path_len - 1], path[0]);
-    //         }
-    //     }
-        
-    //     if (!valid) {
-    //         fprintf(stderr, "[C++ HC2] Hamiltonian cycle validation FAILED!\n");
-    //         return result;
-    //     }
-    // }
-    // // ========== Validation passed ==========
+   
     
     // Precompute node_index: reverse map node id -> position in path
     uint16_t node_index[MAX_QUEEN_GRAPH_SIZE];
